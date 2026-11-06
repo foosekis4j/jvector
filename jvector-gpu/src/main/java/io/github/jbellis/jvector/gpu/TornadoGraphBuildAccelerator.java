@@ -74,10 +74,16 @@ public final class TornadoGraphBuildAccelerator implements GraphBuildAccelerator
 
     @Override
     public boolean supports(GraphIndexBuilder builder, RandomAccessVectorValues vectors, VectorSimilarityFunction similarity) {
-        int n = vectors.size();
-        int dim = vectors.dimension();
-        if (builder.getMaxDegree() > MAX_DEGREE) {
-            LOG.info(() -> "GPU build supports max degree up to " + MAX_DEGREE + ", not " + builder.getMaxDegree());
+        return supports(vectors.size(), vectors.dimension(), builder.getMaxDegree());
+    }
+
+    /**
+     * As {@link #supports(GraphIndexBuilder, RandomAccessVectorValues, VectorSimilarityFunction)}, from the shape of
+     * the build alone, so a caller can decide before it loads any vector.
+     */
+    static boolean supports(int n, int dim, int maxDegree) {
+        if (maxDegree > MAX_DEGREE) {
+            LOG.info(() -> "GPU build supports max degree up to " + MAX_DEGREE + ", not " + maxDegree);
             return false;
         }
         if (n < 2 || !PackedVectors.fits(n, dim)) {

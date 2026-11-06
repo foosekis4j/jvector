@@ -81,11 +81,18 @@ Not supported: incremental insertion and deletes, which stay on the CPU path, an
 
 ## Also on the GPU: compaction and product quantization
 
-**Compaction by rebuilding.** `GpuCompaction` takes the same inputs as `OnDiskGraphIndexCompactor`: on-disk sources
-with inline vectors and their live nodes. It reads the live vectors back and builds the merged graph from scratch on the
-GPU. As with `OnDiskGraphIndexCompactor`, the compaction assigns the new ordinals and `ordinalMappers()` returns them
-afterwards (on the GPU the live nodes are numbered in source order). When the GPU build isn't available, it falls back
-to `OnDiskGraphIndexCompactor`.
+**Compaction by rebuilding (in-core).** `GpuCompaction` takes the same inputs as `OnDiskGraphIndexCompactor`:
+on-disk sources with inline vectors and their live nodes. It streams the live vectors to a temporary raw float32 file
+next to the output, reads it through a memory mapping (never through the Java heap), and builds the merged graph from
+scratch on the GPU. As with `OnDiskGraphIndexCompactor`, the compaction assigns the new ordinals and `ordinalMappers()`
+returns them afterwards (on the GPU the live nodes are numbered in source order).
+
+It is meant for merges that fit: the merged vectors in FP16 on the device (`n x dim x 2` bytes, e.g. 10M x 1024 on a
+24 GB card), and the build's lists in host memory (about 3 KB per live node at M=32). `compact()` decides from these
+sizes before it reads any vector, and merges anything larger with `OnDiskGraphIndexCompactor`, which merges out of core
+on any machine; the same happens without a GPU or TornadoVM. The host budget is the free heap, or
+`-Djvector.gpu.compaction.hostMemory` (e.g. `8GB`). The rebuild does not replace the out-of-core compactor: it is a
+faster path for the merges a GPU can hold.
 
 ```java
 var compaction = new GpuCompaction(sources, liveNodes, VectorSimilarityFunction.COSINE);
